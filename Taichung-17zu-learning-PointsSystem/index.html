@@ -527,39 +527,45 @@
             <span>點數兌換</span>
         </button>
     </div>
+// 🚀 關鍵核心：請把下方換成你剛剛「重新部署後」的全新 Google Apps Script API 網址
+      const API_URL = "https://script.google.com/macros/s/你的全新專案ID/exec";
 
-    <script>
       // =================================================================
-      //  1. 頁面初始化
+      //  1. 頁面初始化 與 共用通訊工具
       // =================================================================
       document.addEventListener("DOMContentLoaded", function() {
         setupTabs();
         
-        google.script.run
-            .withSuccessHandler(populateCourseDropdown)
-            .withFailureHandler(err => showDropdownError(err, 'courseSelect'))
-            .getCourseList();
-            
-        google.script.run
-            .withSuccessHandler(populateBuildingDropdown)
-            .withFailureHandler(err => showDropdownError(err, 'buildingSelect'))
-            .getBuildingList();
-
-        google.script.run
-            .withSuccessHandler(renderRewards)
-            .getRewardList();
+        // 從 Google 後端讀取下拉選單與獎品
+        callAPI('getCourseList', {}, populateCourseDropdown, () => showDropdownError('讀取失敗', 'courseSelect'));
+        callAPI('getBuildingList', {}, populateBuildingDropdown, () => showDropdownError('讀取失敗', 'buildingSelect'));
+        callAPI('getRewardList', {}, renderRewards);
       });
+
+      /**
+       * 替代 google.script.run 的跨網域通訊工具
+       */
+      function callAPI(action, params = {}, successCallback, failureCallback) {
+        const queryParams = new URLSearchParams({ action, ...params }).toString();
+        fetch(`${API_URL}?${queryParams}`)
+          .then(res => res.json())
+          .then(data => {
+            if (successCallback) successCallback(data);
+          })
+          .catch(err => {
+            console.error("API 連線錯誤:", err);
+            if (failureCallback) failureCallback(err);
+          });
+      }
 
       // =================================================================
       //  2. UI 功能函式 (分頁切換)
       // =================================================================
       function setupTabs() {
         const allTabButtons = document.querySelectorAll('.tab-button');
-        
         allTabButtons.forEach(button => {
           button.addEventListener('click', function() {
             const tabName = this.dataset.tab;
-
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             allTabButtons.forEach(btn => btn.classList.remove('active'));
             
@@ -567,13 +573,12 @@
             document.querySelectorAll(`.tab-button[data-tab="${tabName}"]`).forEach(activeBtn => activeBtn.classList.add('active'));
           });
         });
-        
         // 預設首頁：完課累積點數
         document.querySelector('.tab-button[data-tab="register"]').click();
       }
 
       // =================================================================
-      //  3. 共用下拉選單函式
+      //  3. 下拉選單與表單清理功能 (維持原邏輯)
       // =================================================================
       function populateBuildingDropdown(buildings) {
         const select = document.getElementById('buildingSelect');
@@ -581,9 +586,7 @@
         if (Array.isArray(buildings)) {
           buildings.forEach(b => {
             const option = document.createElement('option');
-            option.value = b;
-            option.textContent = b;
-            select.appendChild(option);
+            option.value = b; option.textContent = b; select.appendChild(option);
           });
         }
       }
@@ -594,23 +597,16 @@
         if (Array.isArray(courses)) {
           courses.forEach(c => {
             const option = document.createElement('option');
-            option.value = c;
-            option.textContent = c;
-            select.appendChild(option);
+            option.value = c; option.textContent = c; select.appendChild(option);
           });
         }
       }
       
-      function showDropdownError(error, selectId) {
+      function showDropdownError(msg, selectId) {
         const selectElement = document.getElementById(selectId);
-        if(selectElement) {
-          selectElement.innerHTML = `<option value="">讀取失敗: ${error.message}</option>`;
-        }
+        if(selectElement) selectElement.innerHTML = `<option value="">${msg}</option>`;
       }
 
-      // =================================================================
-      //  4. 清空表單函式
-      // =================================================================
       function clearVerificationForm() {
         document.getElementById('buildingSelect').selectedIndex = 0;
         document.getElementById('unitNumber').value = '';
@@ -618,21 +614,19 @@
         document.getElementById('verifyPhone').value = '';
         document.getElementById('verifyEmail').value = '';
       }
-
       function clearStatusForm() {
         document.getElementById('statusName').value = '';
         document.getElementById('statusPhone').value = '';
       }
-
       function clearRegisterForm() {
         document.getElementById('courseSelect').selectedIndex = 0;
       }
 
       // =================================================================
-      //  5. 事件監聽
+      //  4. 事件監聽 (全數改為 fetch 通訊)
       // =================================================================
 
-      // 身分驗證
+      // 身分驗證送出
       document.getElementById("btnVerify").addEventListener("click", function() {
         const data = {
           building: document.getElementById("buildingSelect").value,
@@ -645,27 +639,19 @@
         const button = this;
 
         if (!data.building || !data.unit || !data.name || !data.phone || !data.email) {
-          resultDiv.innerHTML = "<b>錯誤：所有欄位皆為必填！</b>";
-          return;
+          resultDiv.innerHTML = "<b>錯誤：所有欄位皆為必填！</b>"; return;
         }
 
         resultDiv.innerHTML = "申請送出中...";
         button.disabled = true;
 
-        google.script.run
-          .withSuccessHandler(msg => { 
-            resultDiv.innerHTML = msg; 
-            clearVerificationForm();
-            button.disabled = false;
-          })
-          .withFailureHandler(err => { 
-            resultDiv.innerHTML = "申請失敗: " + err.message;
-            button.disabled = false;
-          })
-          .submitVerificationRequest(data);
+        callAPI('submitVerificationRequest', { data: JSON.stringify(data) }, 
+          msg => { resultDiv.innerHTML = msg; clearVerificationForm(); button.disabled = false; },
+          err => { resultDiv.innerHTML = "申請失敗: 伺服器連線錯誤"; button.disabled = false; }
+        );
       });
 
-      // 驗證進度
+      // 驗證進度查詢
       document.getElementById("btnStatus").addEventListener("click", function() {
         const name = document.getElementById("statusName").value;
         const phone = document.getElementById("statusPhone").value;
@@ -673,24 +659,16 @@
         const button = this;
 
         if (!name || !phone) {
-          resultDiv.innerHTML = "<b>錯誤：姓名和手機為必填！</b>";
-          return;
+          resultDiv.innerHTML = "<b>錯誤：姓名和手機為必填！</b>"; return;
         }
 
         resultDiv.innerHTML = "查詢中...";
         button.disabled = true;
 
-        google.script.run
-          .withSuccessHandler(function(msg) {
-            resultDiv.innerHTML = msg;
-            clearStatusForm();
-            button.disabled = false;
-          })
-          .withFailureHandler(function(err) {
-            resultDiv.innerHTML = "查詢失敗: " + err.message;
-            button.disabled = false;
-          })
-          .checkVerificationStatus(name, phone);
+        callAPI('checkVerificationStatus', { name, phone }, 
+          msg => { resultDiv.innerHTML = msg; clearStatusForm(); button.disabled = false; },
+          err => { resultDiv.innerHTML = "查詢失敗: 伺服器連線錯誤"; button.disabled = false; }
+        );
       });
 
       // 課程登錄
@@ -702,121 +680,84 @@
         const button = this;
 
         if (!name || !phone || !course) {
-          resultDiv.innerHTML = "<b>所有欄位皆為必填！</b>";
-          return;
+          resultDiv.innerHTML = "<b>所有欄位皆為必填！</b>"; return;
         }
 
         resultDiv.innerHTML = "登錄中...";
         button.disabled = true;
         
-        google.script.run
-          .withSuccessHandler(function(msg) {
-            resultDiv.innerHTML = msg; 
-            clearRegisterForm();
-            button.disabled = false;
-          })
-          .withFailureHandler(function(err) {
-            resultDiv.innerHTML = "登錄失敗: " + err.message; 
-            button.disabled = false;
-          })
-          .registerCourse(name, phone, course);
+        callAPI('registerCourse', { name, phone, course }, 
+          msg => { resultDiv.innerHTML = msg; clearRegisterForm(); button.disabled = false; },
+          err => { resultDiv.innerHTML = "登錄失敗: 伺服器連線錯誤"; button.disabled = false; }
+        );
       });
 
       // =================================================================
-      //  6. 點數查詢及兌換 (整合版)
+      //  5. 點數查詢及兌換 (整合版)
       // =================================================================
       let userTotalPoints = 0;
       let currentSelectedCost = 0;
 
-      // 6-1. 查詢及兌換 - 查詢按鈕
+      // 查詢及兌換 - 登入查詢
       document.getElementById('checkPointsBtn').addEventListener('click', function() {
         const name = document.getElementById('redeemLoginName').value;
         const phone = document.getElementById('redeemLoginPhone').value;
         const btn = this;
         const msgDiv = document.getElementById('redeemLoginMsg');
 
-        if(!name || !phone) {
-          msgDiv.textContent = "請輸入姓名與電話";
-          return;
-        }
+        if(!name || !phone) { msgDiv.textContent = "請輸入姓名與電話"; return; }
 
         msgDiv.textContent = "查詢中...";
         btn.disabled = true;
 
-        google.script.run
-          .withSuccessHandler(res => {
-            btn.disabled = false;
-            if(res.success) {
-              msgDiv.textContent = "";
-              userTotalPoints = res.points;
-              document.getElementById('queryResultBox').innerHTML = res.queryResultHtml;
-              showRedemptionUI(name, phone);
-            } else {
-              msgDiv.textContent = res.message;
-            }
-          })
-          .withFailureHandler(err => {
-            btn.disabled = false;
-            msgDiv.textContent = "發生錯誤：" + err.message;
-          })
-          .getUserPointsForRedeem(name, phone);
+        callAPI('getUserPointsForRedeem', { name, phone }, res => {
+          btn.disabled = false;
+          if(res.success) {
+            msgDiv.textContent = "";
+            userTotalPoints = res.points;
+            document.getElementById('queryResultBox').innerHTML = res.queryResultHtml;
+            showRedemptionUI(name, phone);
+          } else {
+            msgDiv.textContent = res.message;
+          }
+        }, err => {
+          btn.disabled = false; msgDiv.textContent = "遠端伺服器連線失敗";
+        });
       });
 
-      // 6-2. 顯示兌換介面
       function showRedemptionUI(name, phone) {
         document.getElementById('redeem-login-section').style.display = 'none'; 
         const ui = document.getElementById('redemption-ui');
         ui.style.display = 'block';
-
         document.getElementById('displayTotalPoints').textContent = userTotalPoints;
         updatePointsDisplay();
-
         document.getElementById('shipName').value = name;
         document.getElementById('shipPhone').value = phone;
       }
 
-      // 6-3. 渲染獎品清單
       function renderRewards(rewards) {
         const container = document.getElementById('rewardListContainer');
-        if(rewards.length === 0) {
-          container.innerHTML = "<p style='padding:15px; text-align:center;'>目前沒有可兌換的獎品。</p>";
-          return;
+        if(!rewards || rewards.length === 0) {
+          container.innerHTML = "<p style='padding:15px; text-align:center;'>目前沒有可兌換的獎品。</p>"; return;
         }
-
         let html = '';
-        rewards.forEach((item, index) => {
+        rewards.forEach(item => {
           html += `
             <div class="reward-item">
-              <div class="reward-info">
-                <span class="reward-name">${item.name}</span>
-                <span class="reward-cost">${item.cost} 點 / 個</span>
-              </div>
-              <div class="reward-action">
-                <label>數量：</label>
-                <input type="number" 
-                       class="qty-input" 
-                       data-cost="${item.cost}" 
-                       data-name="${item.name}" 
-                       value="0" min="0">
-              </div>
-            </div>
-          `;
+              <div class="reward-info"><span class="reward-name">${item.name}</span><span class="reward-cost">${item.cost} 點 / 個</span></div>
+              <div class="reward-action"><label>數量：</label><input type="number" class="qty-input" data-cost="${item.cost}" data-name="${item.name}" value="0" min="0"></div>
+            </div>`;
         });
         container.innerHTML = html;
-
-        document.querySelectorAll('.qty-input').forEach(input => {
-          input.addEventListener('input', calculateTotal);
-        });
+        document.querySelectorAll('.qty-input').forEach(input => { input.addEventListener('input', calculateTotal); });
       }
 
-      // 6-4. 計算與更新
       function calculateTotal() {
         let total = 0;
         document.querySelectorAll('.qty-input').forEach(input => {
           let qty = parseInt(input.value);
           if(isNaN(qty) || qty < 0) qty = 0; 
-          const cost = parseInt(input.dataset.cost);
-          total += cost * qty;
+          total += parseInt(input.dataset.cost) * qty;
         });
         currentSelectedCost = total;
         updatePointsDisplay();
@@ -832,36 +773,25 @@
         displayRemaining.textContent = remaining;
 
         if (currentSelectedCost > 0 && remaining >= 0) {
-          displayRemaining.classList.remove('danger');
-          submitBtn.disabled = false; 
+          displayRemaining.classList.remove('danger'); submitBtn.disabled = false; 
         } else if (remaining < 0) {
-          displayRemaining.classList.add('danger');
-          submitBtn.disabled = true;
+          displayRemaining.classList.add('danger'); submitBtn.disabled = true;
         } else {
-          displayRemaining.classList.remove('danger');
-          submitBtn.disabled = true;
+          displayRemaining.classList.remove('danger'); submitBtn.disabled = true;
         }
       }
 
-      // 6-5. 送出兌換
+      // 確認送出兌換
       document.getElementById('submitRedeemBtn').addEventListener('click', function() {
         const shipAddress = document.getElementById('shipAddress').value;
         const shipEmail = document.getElementById('shipEmail').value;
-        
-        if(!shipEmail || !shipAddress) {
-          alert("請輸入 Email 與寄送地址！");
-          return;
-        }
+        if(!shipEmail || !shipAddress) { alert("請輸入 Email 與寄送地址！"); return; }
 
         const selectedItems = [];
         document.querySelectorAll('.qty-input').forEach(input => {
           let qty = parseInt(input.value);
           if(qty > 0) {
-            selectedItems.push({
-              name: input.dataset.name,
-              cost: parseInt(input.dataset.cost),
-              quantity: qty
-            });
+            selectedItems.push({ name: input.dataset.name, cost: parseInt(input.dataset.cost), quantity: qty });
           }
         });
 
@@ -876,25 +806,17 @@
 
         const btn = this;
         const resultDiv = document.getElementById('redeemResultMsg');
-        
-        btn.disabled = true;
-        btn.textContent = "處理中...";
+        btn.disabled = true; btn.textContent = "處理中...";
 
-        google.script.run
-          .withSuccessHandler(msg => {
-            resultDiv.textContent = msg;
-            btn.textContent = "已送出";
-            document.querySelectorAll('.qty-input').forEach(i => i.value = 0);
-            calculateTotal();
-          })
-          .withFailureHandler(err => {
-            resultDiv.style.color = "red";
-            resultDiv.textContent = "失敗: " + err.message;
-            btn.disabled = false;
-            btn.textContent = "確認兌換";
-          })
-          .submitRedemption(data);
+        callAPI('submitRedemption', { data: JSON.stringify(data) }, 
+          msg => {
+            resultDiv.textContent = msg; btn.textContent = "已送出";
+            document.querySelectorAll('.qty-input').forEach(i => i.value = 0); calculateTotal();
+          },
+          err => {
+            resultDiv.style.color = "red"; resultDiv.textContent = "連線失敗"; btn.disabled = false; btn.textContent = "確認兌換";
+          }
+        );
       });
-    </script>
 </body>
 </html>
