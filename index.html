@@ -527,7 +527,9 @@
             <span>點數兌換</span>
         </button>
     </div>
-// 🚀 關鍵核心：請把下方換成你剛剛「重新部署後」的全新 Google Apps Script API 網址
+
+    <script>
+      // 🚀 關鍵核心：請把下方換成你剛剛「重新部署後」的全新 Google Apps Script API 網址
       const API_URL = "https://script.google.com/macros/s/AKfycbyzQAWSqoU2uI6S_3Ti2t8a2UvD3R-x5xstqsZYeEuq3O0CXDNxIGH7NgfrgaCPgjWMdQ/exec";
 
       // =================================================================
@@ -818,5 +820,12 @@
           }
         );
       });
-</body>
-</html>
+    </script> </body> </html> ```
+
+---
+
+### ⚠️ 上傳至 GitHub Pages 的關鍵最後叮嚀（防 404）
+
+1.  **檔案命名精準度**：請務必將這份檔案命名為小寫的 **`index.html`**，千萬不可以有任何大寫。
+2.  **上傳位置**：檔案必須直接拖曳到 Repository 的**最外層（Root）**，不能包在任何資料夾裡面。
+3.  **大功告成**：覆蓋上傳後，請至 `Settings > Pages` 確認重整，等待 GitHub Actions 的綠色勾勾亮起，大美頁面就正式上線運作囉！
