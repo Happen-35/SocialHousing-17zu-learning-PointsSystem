@@ -88,20 +88,61 @@ function submitVerificationRequest(data) {
   }
 }
 
-/** 【功能六】查詢住戶身分驗證狀態 */
+/** 【功能六】查詢住戶身分驗證狀態 (已結合點數與課程查詢) */
 function checkVerificationStatus(name, phone) {
   if (!name || !phone) return '錯誤：姓名和手機為必填項目。';
   try {
-    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(VERIFICATION_STATUS_SHEET_NAME);
-    if (!sheet) return `系統錯誤：找不到工作表。`;
-    const values = sheet.getDataRange().getValues();
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[VERIFY_NAME_COLUMN - 1] === name && String(row[VERIFY_PHONE_COLUMN - 1]) === phone) {
-        return `<b>已通過驗證！</b><br>姓名：${name}<br>電話：${phone}`;
+    // 1. 查詢「通過驗證住戶資料」
+    const verifySheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(VERIFICATION_STATUS_SHEET_NAME);
+    if (!verifySheet) return `系統錯誤：找不到驗證工作表。`;
+    const verifyValues = verifySheet.getDataRange().getValues();
+    let isVerified = false;
+    
+    for (let i = 1; i < verifyValues.length; i++) {
+      if (verifyValues[i][VERIFY_NAME_COLUMN - 1] === name && String(verifyValues[i][VERIFY_PHONE_COLUMN - 1]) === phone) {
+        isVerified = true;
+        break;
       }
     }
-    return '未通過驗證或資料輸入有誤';
+    
+    // 若未查到資料，直接回傳錯誤
+    if (!isVerified) {
+      return '<span style="color: var(--danger-color);">未通過驗證或資料輸入有誤</span>';
+    }
+    
+    // 2. 驗證通過，繼續查詢「確認集點的資料」
+    const pointsSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(CONFIRMED_POINTS_SHEET_NAME);
+    if (!pointsSheet) return `系統錯誤：找不到點數工作表。`;
+    const pointsValues = pointsSheet.getDataRange().getValues();
+    
+    let totalPoints = 0;
+    let courseListHtml = '';
+    
+    for (let j = 1; j < pointsValues.length; j++) {
+      // 點數表的姓名與電話欄位索引為 C_NAME_COLUMN 和 C_PHONE_COLUMN
+      if (pointsValues[j][C_NAME_COLUMN - 1] === name && String(pointsValues[j][C_PHONE_COLUMN - 1]) === phone) {
+        const courseName = pointsValues[j][C_COURSE_COLUMN - 1];
+        const pts = Number(pointsValues[j][C_POINTS_COLUMN - 1]);
+        
+        if (!isNaN(pts)) {
+          totalPoints += pts;
+          courseListHtml += `<li>${courseName} <b>[+${pts}點]</b></li>`;
+        }
+      }
+    }
+    
+    // 3. 組合回傳畫面 (直接產出整合後的 HTML 排版)
+    let responseHtml = `<b>已通過驗證！</b><br>姓名：${name}<br>電話：${phone}<br><hr style="border: 0; border-top: 1px dashed var(--border-color); margin: 12px 0;">`;
+    responseHtml += `目前總點數：<span style="color: var(--primary-color); font-size: 18px; font-weight: bold;">${totalPoints}</span> 點<br><br>`;
+    
+    if (courseListHtml !== '') {
+      responseHtml += `<b>已集點課程：</b><ul style="margin-top: 8px; padding-left: 20px; line-height: 1.6;">${courseListHtml}</ul>`;
+    } else {
+      responseHtml += `<b>已集點課程：</b><br>尚無集點紀錄`;
+    }
+    
+    return responseHtml;
+    
   } catch (err) {
     return '查詢時發生系統錯誤，請聯繫管理員。';
   }
